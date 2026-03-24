@@ -1,3 +1,3 @@
 # Report
 
-![Example](thumbnail.png)
+TODO

@@ -30,6 +30,14 @@
     height: 15mm,
   ))
 
+  #let bg-circuit = box(
+    width: 100%,
+    height: 21cm,
+    inset: (right: -60mm),
+    clip: true,
+    image("img/circuit.jpg", fit: "cover", height: 100%),
+  )
+
   #let bg-summer = box(
     width: 100%,
     height: 21cm,
@@ -59,6 +67,8 @@
     bgimage = bg-winter
   } else if background == "summer" {
     bgimage = bg-summer
+  } else if background == "circuit" {
+    bgimage = bg-circuit
   } else if date.month() >= 10 or date.month() <= 3 {
     bgimage = bg-winter
   }
