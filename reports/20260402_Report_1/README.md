@@ -1,0 +1,3 @@
+# Report
+
+![Example](thumbnail.png)
