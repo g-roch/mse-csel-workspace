@@ -6,22 +6,23 @@
 
 #show: report.with(
   title: [Environnement Linux embarqué et programmation noyau Linux],
-  subtitle: [Construction de Systèmes Embarqués sur Linux],
+  subtitle: [CSEL Construction de Systèmes Embarqués sur Linux],
   author: [Carolina Inácio Pereira, Gaby Roch, Simon Mirkovitch],
-  department: "isis",
+  department: "hesso-master",
   report-no: [Rapport de laboratoire 1],
   open-right: true,
   abstract: none,
-  blurb: [
-    #set par(justify: true)
-    #lorem(50)
-  ],background: "circuit",
-  date: datetime(year: 2025, month: 7, day: 17),
+  blurb: none,
+  background: "circuit",
+  repository: [https://github.com/g-roch/mse-csel-workspace],
+  date: datetime(year: 2026, month: 4, day: 2),
 )
 
 #set par(justify: true)
 
 = Introduction
+
+#include "sections/1_introduction.typ"
 
 /* Structure du rapport
 - En-tête
@@ -45,11 +46,13 @@
 - Annexes (références/littérature, code source/patches dans fichier tar)
 */
 
+
+
 = Environnement Linux embarqué
 
-
+#include "sections/2_environnement_linux_embarque.typ"
 
 = Programmation noyau
 
-
+#include "sections/3_programmation_noyau.typ"
 
