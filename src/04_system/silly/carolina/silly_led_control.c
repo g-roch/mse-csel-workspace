@@ -30,6 +30,12 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+// timerfd_*
+#include <sys/timerfd.h>
+// uint64_t
+#include <stdint.h>
+// perror
+#include <stdio.h>
 
 /*
  * status led - gpioa.10 --> gpio10
@@ -39,6 +45,7 @@
 #define GPIO_UNEXPORT "/sys/class/gpio/unexport"
 #define GPIO_LED      "/sys/class/gpio/gpio10"
 #define LED           "10"
+
 
 static int open_led()
 {
@@ -62,39 +69,77 @@ static int open_led()
     return f;
 }
 
+int toggle_led(int led_fd)
+{
+    static int state = 0;
+    state = !state;
+    lseek(led_fd, 0, SEEK_SET);
+    write(led_fd, state ? "1" : "0", 1);
+
+    return 0;
+}
+
 int main(int argc, char* argv[])
 {
-    long duty   = 2;     // %
-    long period = 1000;  // ms
-    if (argc >= 2) period = atoi(argv[1]);
-    period *= 1000000;  // in ns
+    // Manage command line arguments
+     if (argc > 2) {
+        fprintf(stderr, "Usage: %s [period_ms]\n", argv[0]);
+        return -1;
+    }
 
-    // compute duty period...
-    long p1 = period / 100 * duty;
-    long p2 = period - p1;
+    long period_ms = 1000;  // ms
+    if (argc >= 2) period_ms = atoi(argv[1]);
 
-    int led = open_led();
-    pwrite(led, "1", sizeof("1"), 0);
+    // Get already a hold of the LED file descriptor
+    int led_fd = open_led();
 
-    struct timespec t1;
-    clock_gettime(CLOCK_MONOTONIC, &t1);
+    // Create a timerfd to generate periodic events
+    int timer_fd = timerfd_create(CLOCK_MONOTONIC, 0);
+    if (timer_fd == -1) {
+        perror("timerfd_create");
+        return -1;
+    }
 
-    int k = 0;
+    // Get the seconds and nanoseconds components of the period
+    int period_sec = period_ms / 1000; // seconds part
+    long period_ns = (period_ms % 1000) * 1000000L; // nanoseconds part (remaining after extracting seconds)
+
+    // Configure the timer to fire every 'period_ms' milliseconds
+    struct itimerspec timer_spec;
+    timer_spec.it_value.tv_sec = period_sec;
+    timer_spec.it_value.tv_nsec = period_ns;
+    timer_spec.it_interval.tv_sec = period_sec;
+    timer_spec.it_interval.tv_nsec = period_ns;
+
+    // Configure and start the timer
+    if (timerfd_settime(timer_fd, 0, &timer_spec, NULL) == -1) {
+        perror("timerfd_settime");
+        exit(-1);
+    }
+
     while (1) {
-        struct timespec t2;
-        clock_gettime(CLOCK_MONOTONIC, &t2);
+        // Define a set of file descriptors to monitor
+        fd_set read_fds;
+        // Init the fd list
+        FD_ZERO(&read_fds);
+        // Add the timer file descriptor to the set
+        FD_SET(timer_fd, &read_fds);
 
-        long delta =
-            (t2.tv_sec - t1.tv_sec) * 1000000000 + (t2.tv_nsec - t1.tv_nsec);
+        // Wait for the timer to expire
+        int ret = select(timer_fd + 1, &read_fds, NULL, NULL, NULL);
+        if (ret == -1) {
+            perror("select");
+            exit(-1);
+        }
 
-        int toggle = ((k == 0) && (delta >= p1)) | ((k == 1) && (delta >= p2));
-        if (toggle) {
-            t1 = t2;
-            k  = (k + 1) % 2;
-            if (k == 0)
-                pwrite(led, "1", sizeof("1"), 0);
-            else
-                pwrite(led, "0", sizeof("0"), 0);
+        // Check if the timer file descriptor is ready
+        if (FD_ISSET(timer_fd, &read_fds)) {
+            // Timer expired, toggle the LED
+            uint64_t expirations;
+            // Clear the timer event
+            read(timer_fd, &expirations, sizeof(expirations));
+            // Toggle the LED
+            toggle_led(led_fd);
         }
     }
 
