@@ -8,7 +8,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
 set(CMAKE_C_FLAGS "-Wall -Wextra -g -O0 -MD -std=gnu17")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mcpu=cortex-a53 -funwind-tables")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -funwind-tables")
 
 set(CMAKE_CXX_FLAGS "-Wall -Wextra -g -O0 -MD -std=gnu++17")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=cortex-a53 -funwind-tables")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -funwind-tables")
