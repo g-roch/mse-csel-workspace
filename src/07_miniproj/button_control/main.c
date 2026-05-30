@@ -37,6 +37,9 @@ static void update_frequency(int get_freq_fd, int set_freq_fd, int delta)
     lseek(get_freq_fd, 0, SEEK_SET);
     read(get_freq_fd, freq_str, sizeof(freq_str));
 
+    printf("Current frequency: %s\n", freq_str); // Debug log, TODO: remove this in the final version
+    printf("Size of freq_str: %lu\n", sizeof(freq_str)); // Debug log, TODO: remove this in the final version
+
     // Convert the frequency string to an integer, apply the delta, and convert back to string
     int freq = atoi(freq_str);
     freq += delta;
@@ -48,8 +51,10 @@ static void update_frequency(int get_freq_fd, int set_freq_fd, int delta)
         freq = MAX_FREQ;
     }
     // Write the new frequency back to the set_freq interface
-    snprintf(freq_str, sizeof(freq_str), "%d", freq);
+    snprintf(freq_str, sizeof(freq_str), "%d\n", freq);
     lseek(set_freq_fd, 0, SEEK_SET);
+    printf("New frequency string: %s\n", freq_str); // Debug log, TODO: remove this in the final version
+    printf("Size of freq_str to write: %lu\n", sizeof(freq_str)); // Debug log, TODO: remove this in the final version
     write(set_freq_fd, freq_str, strlen(freq_str));
 
     // Debug log, TODO: remove this in the final version
