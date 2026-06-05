@@ -13,6 +13,8 @@
 #include <sys/epoll.h>
 // OLED lib
 #include "ssd1306.h"
+// For intervals
+#include <time.h>
 // Config
 #include "config.h"
 
@@ -215,11 +217,6 @@ int main(void)
     close(fd);
     // --------------------------------------------------------------------------------------------
 
-    // Initialize the OLED display
-    ssd1306_init();
-    temperature = get_temperature(temp_fd);
-    update_display();
-
     // Prepare the get_freq interface
     int get_freq_fd = open(GET_FREQ_PATH, O_RDONLY);
     if (get_freq_fd == -1) {
@@ -251,6 +248,16 @@ int main(void)
         perror("open GPIO or temperature");
         return 1;
     }
+
+    // Initialize the OLED display
+    ssd1306_init();
+    temperature = get_temperature(temp_fd);
+
+    // Prepare clock for measuring intervals
+    clock_t last_temp_update = clock();
+
+    update_display();
+
 
     // Create the epoll context
     int epfd = epoll_create1(0);
@@ -292,6 +299,7 @@ int main(void)
         return 1;
     }
 
+
     // Main loop to poll button states and control the LED
     char k1_value = '0', k2_value = '0', k3_value = '0';
     while (1) {
@@ -331,8 +339,14 @@ int main(void)
                 }
             } else if (events[i].data.fd == temp_fd) {
                 lseek(temp_fd, 0, SEEK_SET);
-                temperature = get_temperature(temp_fd);
-                update_display();
+
+                clock_t current_time = clock();
+                if (current_time - last_temp_update > CLOCKS_PER_SEC) { // Update temperature at most once per second
+                    last_temp_update = current_time;
+
+                    temperature = get_temperature(temp_fd);
+                    update_display();
+                }
             }
         }
 
