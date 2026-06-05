@@ -178,17 +178,11 @@ void update_display()
     ssd1306_puts(buffer);
 }
 
-int get_temperature()
+int get_temperature(int fd)
 {
     // Read the temperature from the system file
     char temp_str[16];
-    int temp_fd = open(GET_TEMP_PATH, O_RDONLY);
-    if (temp_fd == -1) {
-        perror("open temperature");
-        return -1;
-    }
-    read(temp_fd, temp_str, sizeof(temp_str));
-    close(temp_fd);
+    read(fd, temp_str, sizeof(temp_str));
 
     // Convert the temperature string to an integer (divide by 1000 to get °C)
     int temp = atoi(temp_str) / 1000;
@@ -223,7 +217,7 @@ int main(void)
 
     // Initialize the OLED display
     ssd1306_init();
-    temperature = get_temperature();
+    temperature = get_temperature(temp_fd);
     update_display();
 
     // Prepare the get_freq interface
@@ -253,6 +247,10 @@ int main(void)
     int k3_fd = setup_gpio(K3_BUTTON_GPIO, "in", "both");
     int power_led_fd = setup_gpio(POWER_LED_GPIO, "out", NULL);
     int temp_fd = open(GET_TEMP_PATH, O_RDONLY);
+    if (k1_fd == -1 || k2_fd == -1 || k3_fd == -1 || power_led_fd == -1 || temp_fd == -1) {
+        perror("open GPIO or temperature");
+        return 1;
+    }
 
     // Create the epoll context
     int epfd = epoll_create1(0);
@@ -333,15 +331,13 @@ int main(void)
                 }
             } else if (events[i].data.fd == temp_fd) {
                 lseek(temp_fd, 0, SEEK_SET);
-                temperature = get_temperature();
+                temperature = get_temperature(temp_fd);
                 update_display();
             }
         }
 
         // Blink the power LED if any button is pressed
         write(power_led_fd, (k1_value == '1' || k2_value == '1' || k3_value == '1') ? "1" : "0", 1);
-
-        
     }
 
     return 0;
