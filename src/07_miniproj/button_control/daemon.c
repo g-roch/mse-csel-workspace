@@ -252,6 +252,7 @@ int main(void)
     int k2_fd = setup_gpio(K2_BUTTON_GPIO, "in", "both");
     int k3_fd = setup_gpio(K3_BUTTON_GPIO, "in", "both");
     int power_led_fd = setup_gpio(POWER_LED_GPIO, "out", NULL);
+    int temp_fd = open(GET_TEMP_PATH, O_RDONLY);
 
     // Create the epoll context
     int epfd = epoll_create1(0);
@@ -285,12 +286,20 @@ int main(void)
         return 1;
     }
 
+    ev.events = EPOLLIN; // Trigger on normal data (temperature change)
+    ev.data.fd = temp_fd;
+    ret = epoll_ctl(epfd, EPOLL_CTL_ADD, temp_fd, &ev);
+    if (ret == -1) {
+        perror("epoll_ctl temp");
+        return 1;
+    }
+
     // Main loop to poll button states and control the LED
     char k1_value = '0', k2_value = '0', k3_value = '0';
     while (1) {
         // Wait for any button event using epoll
-        struct epoll_event events[3];
-        int nr = epoll_wait(epfd, events, 3, -1);
+        struct epoll_event events[4];
+        int nr = epoll_wait(epfd, events, 4, -1);
         if (nr == -1) {
             perror("epoll_wait");
             break;
@@ -322,6 +331,10 @@ int main(void)
                     switch_mode(auto_freq_fd);
                     update_display();
                 }
+            } else if (events[i].data.fd == temp_fd) {
+                lseek(temp_fd, 0, SEEK_SET);
+                temperature = get_temperature();
+                update_display();
             }
         }
 
