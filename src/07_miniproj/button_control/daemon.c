@@ -7,15 +7,17 @@
 #include <string.h>
 // For standard library functions
 #include <stdlib.h>
+// For file permissions
+#include <sys/stat.h>
 // For epoll
 #include <sys/epoll.h>
+// OLED lib
+#include "ssd1306.h"
+// Config
+#include "config.h"
 
 #define EXPORT_GPIO_PATH "/sys/class/gpio/export"
 #define UNEXPORT_GPIO_PATH "/sys/class/gpio/unexport"
-
-#define SET_FREQ_PATH "/tmp/set_freq" // TODO: add real path in class later
-#define GET_FREQ_PATH "/tmp/set_freq" // TODO: add real path in class later (same as set_freq bc we don't have the sysmod yet)
-#define AUTO_FREQ_PATH "/tmp/auto_freq" // TODO: add real path in class later
 
 #define MIN_FREQ 1
 #define MAX_FREQ 20
@@ -38,9 +40,6 @@ static void update_frequency(int get_freq_fd, int set_freq_fd, int delta)
     lseek(get_freq_fd, 0, SEEK_SET);
     read(get_freq_fd, freq_str, sizeof(freq_str));
 
-    printf("Current frequency: %s\n", freq_str); // Debug log, TODO: remove this in the final version
-    printf("Size of freq_str: %lu\n", sizeof(freq_str)); // Debug log, TODO: remove this in the final version
-
     // Convert the frequency string to an integer, apply the delta, and convert back to string
     int freq = atoi(freq_str);
     freq += delta;
@@ -54,12 +53,7 @@ static void update_frequency(int get_freq_fd, int set_freq_fd, int delta)
     // Write the new frequency back to the set_freq interface
     snprintf(freq_str, sizeof(freq_str), "%d\n", freq);
     lseek(set_freq_fd, 0, SEEK_SET);
-    printf("New frequency string: %s\n", freq_str); // Debug log, TODO: remove this in the final version
-    printf("Size of freq_str to write: %lu\n", sizeof(freq_str)); // Debug log, TODO: remove this in the final version
     write(set_freq_fd, freq_str, strlen(freq_str));
-
-    // Debug log, TODO: remove this in the final version
-    printf("Updated frequency to %d\n", freq);
 }
 
 static int switch_mode(int auto_freq_fd)
@@ -75,9 +69,6 @@ static int switch_mode(int auto_freq_fd)
     // Write the new mode back to the auto_freq interface
     lseek(auto_freq_fd, 0, SEEK_SET);
     write(auto_freq_fd, new_mode, strlen(new_mode));
-
-    // Debug log, TODO: remove this in the final version
-    printf("Switched mode to %s (%s)\n", new_mode, strcmp(new_mode, "0") == 0 ? "manual" : "auto");
 
     return 0;
 }
@@ -132,11 +123,45 @@ static int setup_gpio(int gpio, const char *direction, const char *edge)
     return fd;
 }
 
+// Daemonize the process
+void daemonize()
+{
+    // Fork the process
+    pid_t pid = fork();
+    if (pid < 0) exit(EXIT_FAILURE); // Fork failed
+    if (pid > 0) exit(EXIT_SUCCESS); // Parent exits, child continues as daemon
+
+    if (setsid() <0) exit(EXIT_FAILURE); // Create a new session
+
+    // Fork again to ensure the daemon cannot acquire a controlling terminal
+    pid = fork();
+    if (pid < 0) exit(EXIT_FAILURE); // Fork failed
+    if (pid > 0) exit(EXIT_SUCCESS); // Parent exits, child continues as daemon
+
+    umask(0); // TODO: Set file permissions mask
+    chdir("/"); // TODO: Change working directory to ... 
+
+    // Close standard file descriptors (stdin, stdout, stderr)
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
+
+    FILE *fp = fopen(PID_FILE, "w");
+    if (fp) {
+        fprintf(fp, "%d\n", getpid());
+        fclose(fp);
+    }
+}
+
+
 // ---
 // Main function
 
 int main(void)
 {
+    // daemonize();
+
+    // --------------------------------------------------------------------------------------------
     // Create the files for the get_freq, set_freq and auto_freq interfaces if they don't exist
     // TODO: remove this in the final version, we will have the sysmod to create these files for us
     int fd;
@@ -153,6 +178,14 @@ int main(void)
     }
     close(fd);
     // --------------------------------------------------------------------------------------------
+
+    // Initialize the OLED display
+    ssd1306_init();
+    ssd1306_clear_display();
+    // Display initial message
+    ssd1306_set_position(0, 0);
+    ssd1306_puts("TEST");
+
 
     // Prepare the get_freq interface
     int get_freq_fd = open(GET_FREQ_PATH, O_RDONLY);
@@ -174,7 +207,6 @@ int main(void)
         perror("open auto_freq");
         return 1;
     }
-
 
     // Setup the GPIOs for the buttons and the power LED
     int k1_fd = setup_gpio(K1_BUTTON_GPIO, "in", "both");
@@ -251,11 +283,8 @@ int main(void)
             }
         }
 
-        // Print state of the buttons, TODO: remove this debug print in the final version
-        printf("%c %c %c\n", k1_value == '1' ? 'o' : 'x', k2_value == '1' ? 'o' : 'x', k3_value == '1' ? 'o' : 'x');
-
-        // Blink the power LED if k1 or k2 are pressed
-        write(power_led_fd, (k1_value == '1' || k2_value == '1') ? "1" : "0", 1);
+        // Blink the power LED if any button is pressed
+        write(power_led_fd, (k1_value == '1' || k2_value == '1' || k3_value == '1') ? "1" : "0", 1);
     }
 
     return 0;
