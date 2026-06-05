@@ -32,6 +32,9 @@ const int K1_BUTTON_GPIO = 0; // GPIO pin for k1 button
 const int K2_BUTTON_GPIO = 2; // GPIO pin for k2 button
 const int K3_BUTTON_GPIO = 3; // GPIO pin for k3 button
 
+int frequency = 10; // Initial frequency (Hz)
+int temperature = 35; // Initial temperature (°C)
+
 // Update the frequency
 static void update_frequency(int get_freq_fd, int set_freq_fd, int delta)
 {
@@ -51,9 +54,12 @@ static void update_frequency(int get_freq_fd, int set_freq_fd, int delta)
         freq = MAX_FREQ;
     }
     // Write the new frequency back to the set_freq interface
-    snprintf(freq_str, sizeof(freq_str), "%d\n", freq);
+    sprintf(freq_str, "%d\n", freq);
     lseek(set_freq_fd, 0, SEEK_SET);
     write(set_freq_fd, freq_str, strlen(freq_str));
+
+    // Update the frequency variable and display
+    frequency = freq;
 }
 
 static int switch_mode(int auto_freq_fd)
@@ -153,6 +159,42 @@ void daemonize()
     }
 }
 
+void update_display()
+{
+    // ssd1306_clear_display();
+    // Display initial message
+    ssd1306_set_position(0, 0);
+    ssd1306_puts("CSEL1");
+    ssd1306_set_position(0, 1);
+    ssd1306_puts("----------");
+    ssd1306_set_position(0, 3);
+    
+    char buffer[20];
+    sprintf(buffer, "Temp: %d'C  ", temperature);
+    ssd1306_puts(buffer);
+
+    ssd1306_set_position(0, 4);
+    sprintf(buffer, "Freq: %dHz  ", frequency);
+    ssd1306_puts(buffer);
+}
+
+int get_temperature()
+{
+    // Read the temperature from the system file
+    char temp_str[16];
+    int temp_fd = open(GET_TEMP_PATH, O_RDONLY);
+    if (temp_fd == -1) {
+        perror("open temperature");
+        return -1;
+    }
+    read(temp_fd, temp_str, sizeof(temp_str));
+    close(temp_fd);
+
+    // Convert the temperature string to an integer (divide by 1000 to get °C)
+    int temp = atoi(temp_str) / 1000;
+    return temp;
+}
+
 
 // ---
 // Main function
@@ -181,11 +223,8 @@ int main(void)
 
     // Initialize the OLED display
     ssd1306_init();
-    ssd1306_clear_display();
-    // Display initial message
-    ssd1306_set_position(0, 0);
-    ssd1306_puts("TEST");
-
+    temperature = get_temperature();
+    update_display();
 
     // Prepare the get_freq interface
     int get_freq_fd = open(GET_FREQ_PATH, O_RDONLY);
@@ -265,6 +304,7 @@ int main(void)
                 // If k1 is pressed, increase the frequency
                 if (k1_value == '1') {
                     update_frequency(get_freq_fd, set_freq_fd, FREQ_STEP);
+                    update_display();
                 }
             } else if (events[i].data.fd == k2_fd) {
                 lseek(k2_fd, 0, SEEK_SET);
@@ -272,6 +312,7 @@ int main(void)
                 // If k2 is pressed, decrease the frequency
                 if (k2_value == '1') {
                     update_frequency(get_freq_fd, set_freq_fd, -FREQ_STEP);
+                    update_display();
                 }
             } else if (events[i].data.fd == k3_fd) {
                 lseek(k3_fd, 0, SEEK_SET);
@@ -279,12 +320,15 @@ int main(void)
                 // If k3 is pressed, switch mode
                 if (k3_value == '1') {
                     switch_mode(auto_freq_fd);
+                    update_display();
                 }
             }
         }
 
         // Blink the power LED if any button is pressed
         write(power_led_fd, (k1_value == '1' || k2_value == '1' || k3_value == '1') ? "1" : "0", 1);
+
+        
     }
 
     return 0;
