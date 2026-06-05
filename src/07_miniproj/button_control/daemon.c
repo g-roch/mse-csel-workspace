@@ -36,6 +36,7 @@ const int K3_BUTTON_GPIO = 3; // GPIO pin for k3 button
 
 int frequency = 10; // Initial frequency (Hz)
 int temperature = 35; // Initial temperature (°C)
+int current_mode = 1; // 1 for auto, 0 for manual
 
 // Update the frequency
 static void update_frequency(int get_freq_fd, int set_freq_fd, int delta)
@@ -64,21 +65,13 @@ static void update_frequency(int get_freq_fd, int set_freq_fd, int delta)
     frequency = freq;
 }
 
-static int switch_mode(int auto_freq_fd)
+static void switch_mode(int auto_freq_fd)
 {
-    // Read the current mode from the auto_freq interface
-    char mode_str[16];
-    lseek(auto_freq_fd, 0, SEEK_SET);
-    read(auto_freq_fd, mode_str, sizeof(mode_str));
-
-    // Toggle the mode (0/1 for manual/auto)
-    const char *new_mode = (strcmp(mode_str, "0") == 0) ? "1" : "0";
+    current_mode = !current_mode; // Toggle the mode
 
     // Write the new mode back to the auto_freq interface
     lseek(auto_freq_fd, 0, SEEK_SET);
-    write(auto_freq_fd, new_mode, strlen(new_mode));
-
-    return 0;
+    write(auto_freq_fd, current_mode ? "1\n" : "0\n", 2);
 }
 
 // Auto-setup of one GPIO pin
@@ -178,6 +171,10 @@ void update_display()
     ssd1306_set_position(0, 4);
     sprintf(buffer, "Freq: %dHz  ", frequency);
     ssd1306_puts(buffer);
+
+    ssd1306_set_position(0, 5);
+    sprintf(buffer, "Mode: %s  ", current_mode ? "Auto" : "Manual");
+    ssd1306_puts(buffer);
 }
 
 int get_temperature(int fd)
@@ -197,7 +194,7 @@ int get_temperature(int fd)
 
 int main(void)
 {
-    // daemonize();
+    daemonize();
 
     // --------------------------------------------------------------------------------------------
     // Create the files for the get_freq, set_freq and auto_freq interfaces if they don't exist
@@ -217,6 +214,14 @@ int main(void)
     close(fd);
     // --------------------------------------------------------------------------------------------
 
+    current_mode = !current_mode;
+    int auto_freq_fd = open(AUTO_FREQ_PATH, O_RDWR);
+    if (auto_freq_fd == -1) {
+        perror("open auto_freq");
+        return 1;
+    }
+    switch_mode(auto_freq_fd);
+
     // Prepare the get_freq interface
     int get_freq_fd = open(GET_FREQ_PATH, O_RDONLY);
     if (get_freq_fd == -1) {
@@ -228,13 +233,6 @@ int main(void)
     int set_freq_fd = open(SET_FREQ_PATH, O_WRONLY);
     if (set_freq_fd == -1) {
         perror("open set_freq");
-        return 1;
-    }
-
-    // Prepare the auto_freq interface (read/write)
-    int auto_freq_fd = open(AUTO_FREQ_PATH, O_RDWR);
-    if (auto_freq_fd == -1) {
-        perror("open auto_freq");
         return 1;
     }
 
