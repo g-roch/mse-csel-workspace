@@ -19,6 +19,7 @@
 
 #define MIN_FREQ 1
 #define MAX_FREQ 20
+#define FREQ_STEP 1
 
 // We will nedd to define the GPIO pins for the following components:
 // - The power LED to indicate when a button is pressed
@@ -151,7 +152,7 @@ int main(void)
         return 1;
     }
     close(fd);
-    // ---
+    // --------------------------------------------------------------------------------------------
 
     // Prepare the get_freq interface
     int get_freq_fd = open(GET_FREQ_PATH, O_RDONLY);
@@ -231,15 +232,14 @@ int main(void)
                 read(k1_fd, &k1_value, sizeof(k1_value));
                 // If k1 is pressed, increase the frequency
                 if (k1_value == '1') {
-                    // TODO: confirm increment value
-                    update_frequency(get_freq_fd, set_freq_fd, 1);
+                    update_frequency(get_freq_fd, set_freq_fd, FREQ_STEP);
                 }
             } else if (events[i].data.fd == k2_fd) {
                 lseek(k2_fd, 0, SEEK_SET);
                 read(k2_fd, &k2_value, sizeof(k2_value));
                 // If k2 is pressed, decrease the frequency
                 if (k2_value == '1') {
-                    update_frequency(get_freq_fd, set_freq_fd, -1);
+                    update_frequency(get_freq_fd, set_freq_fd, -FREQ_STEP);
                 }
             } else if (events[i].data.fd == k3_fd) {
                 lseek(k3_fd, 0, SEEK_SET);
