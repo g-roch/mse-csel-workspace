@@ -53,7 +53,7 @@ static int read_frequency(int get_freq_fd)
 // Update the frequency
 static void update_frequency(int get_freq_fd, int set_freq_fd, int delta)
 {
-    int freq = read_frequency(get_freq_fd); // Read the current frequency from the get_freq interface
+    int freq = frequency;
     freq += delta;
 
     // Keep frequency between MIN_FREQ and MAX_FREQ
@@ -204,13 +204,11 @@ int main(void)
 {
     daemonize();
 
-    current_mode = !current_mode;
     int auto_freq_fd = open(AUTO_FREQ_PATH, O_RDWR);
     if (auto_freq_fd == -1) {
         perror("open auto_freq");
         return 1;
     }
-    switch_mode(auto_freq_fd);
 
     // Prepare the get_freq interface
     int get_freq_fd = open(GET_FREQ_PATH, O_RDONLY);
@@ -232,20 +230,23 @@ int main(void)
     int k3_fd = setup_gpio(K3_BUTTON_GPIO, "in", "both");
     int power_led_fd = setup_gpio(POWER_LED_GPIO, "out", NULL);
     int temp_fd = open(GET_TEMP_PATH, O_RDONLY);
-    if (k1_fd == -1 || k2_fd == -1 || k3_fd == -1 || power_led_fd == -1 || temp_fd == -1) {
+
+    if (k1_fd == -1 || k2_fd == -1 || k3_fd == -1 || power_led_fd == -1 || temp_fd == -1 || get_freq_fd == -1) {
         perror("open GPIO or temperature");
         return 1;
     }
 
+    // Init variables
+    current_mode = !current_mode;
+    temperature = get_temperature(temp_fd);
+    frequency = read_frequency(get_freq_fd);
+
+    // Make sure we start in auto mode
+    switch_mode(auto_freq_fd);
+
     // Initialize the OLED display
     ssd1306_init();
-    temperature = get_temperature(temp_fd);
-
-    // Prepare clock for measuring intervals
-    clock_t last_temp_update = clock();
-
     update_display();
-
 
     // Create the epoll context
     int epfd = epoll_create1(0);
@@ -257,8 +258,8 @@ int main(void)
     // Add each button's file descriptor to the epoll context
     struct epoll_event ev;
     ev.events = EPOLLPRI; // Trigger on urgent data (button state change)
-    ev.data.fd = k1_fd;
     
+    ev.data.fd = k1_fd;
     int ret = epoll_ctl(epfd, EPOLL_CTL_ADD, k1_fd, &ev);
     if (ret == -1) {
         perror("epoll_ctl k1");
@@ -279,19 +280,20 @@ int main(void)
         return 1;
     }
 
-    ev.events = EPOLLIN; // Trigger on normal data (temperature change)
-    ev.data.fd = temp_fd;
-    ret = epoll_ctl(epfd, EPOLL_CTL_ADD, temp_fd, &ev);
+    ev.events = EPOLLIN; // Trigger on normal data (file change)
+
+    ev.events = EPOLLPRI;
+    ev.data.fd = get_freq_fd;
+    ret = epoll_ctl(epfd, EPOLL_CTL_ADD, get_freq_fd, &ev);
     if (ret == -1) {
-        perror("epoll_ctl temp");
+        perror("epoll_ctl get_freq");
         return 1;
     }
-
 
     // Main loop to poll button states and control the LED
     char k1_value = '0', k2_value = '0', k3_value = '0';
     while (1) {
-        // Wait for any button event using epoll with timout of 0.5 seconds
+        // Wait for any button event using epoll with timeout of 0.5 seconds
         struct epoll_event events[4];
         int nr = epoll_wait(epfd, events, 4, 500);
         if (nr == -1) {
@@ -300,24 +302,20 @@ int main(void)
         }
 
         for (int i = 0; i < nr; i++) {
-            // Read fd to clear the event
+            // K1 is pressed, decrease frequency in manual mode
             if (events[i].data.fd == k1_fd && current_mode == 0) {
                 lseek(k1_fd, 0, SEEK_SET);
                 read(k1_fd, &k1_value, sizeof(k1_value));
-                // If k1 is pressed, increase the frequency
+                // If k1 is pressed, decrease the frequency
                 if (k1_value == '1') {
                     update_frequency(get_freq_fd, set_freq_fd, -FREQ_STEP);
-                    temperature = get_temperature(temp_fd);
-                    update_display();
                 }
             } else if (events[i].data.fd == k2_fd && current_mode == 0) {
                 lseek(k2_fd, 0, SEEK_SET);
                 read(k2_fd, &k2_value, sizeof(k2_value));
-                // If k2 is pressed, decrease the frequency
+                // If k2 is pressed, increase the frequency
                 if (k2_value == '1') {
                     update_frequency(get_freq_fd, set_freq_fd, FREQ_STEP);
-                    temperature = get_temperature(temp_fd);
-                    update_display();
                 }
             } else if (events[i].data.fd == k3_fd) {
                 lseek(k3_fd, 0, SEEK_SET);
@@ -325,28 +323,20 @@ int main(void)
                 // If k3 is pressed, switch mode
                 if (k3_value == '1') {
                     switch_mode(auto_freq_fd);
-                    frequency = read_frequency(get_freq_fd); // Update frequency variable to reflect any change from switching mode
-                    temperature = get_temperature(temp_fd);
-                    update_display();
                 }
-            } else if (events[i].data.fd == temp_fd) {
-                clock_t current_time = clock();
-                if (current_time - last_temp_update > CLOCKS_PER_SEC / 2) { // Update temperature at most once per second
-                    last_temp_update = current_time;
-                    frequency = read_frequency(get_freq_fd); // Update frequency variable to reflect any change from switching mode
-                    temperature = get_temperature(temp_fd);
-                    update_display();
-                }
-            } else {
-                clock_t current_time = clock();
-                if (current_time - last_temp_update > CLOCKS_PER_SEC / 2) { // Update temperature at most once per second
-                    last_temp_update = current_time;
-                    frequency = read_frequency(get_freq_fd); // Update frequency variable to reflect any change from switching mode
-                    temperature = get_temperature(temp_fd);
-                    update_display();
-                }
+            } else if (events[i].data.fd == get_freq_fd) {
+                // Update frequency variable to reflect all changes
+                frequency = read_frequency(get_freq_fd);
             }
         }
+
+        if (nr == 0) {
+            // Timeout occurred, update temperature and display
+            temperature = get_temperature(temp_fd);
+        }
+
+        // Update the OLED display every event loop iteration
+        update_display();
 
         // Blink the power LED if any button is pressed
         write(power_led_fd, (k1_value == '1' || k2_value == '1' || k3_value == '1') ? "1" : "0", 1);
