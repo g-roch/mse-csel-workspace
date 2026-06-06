@@ -237,9 +237,9 @@ static void __exit skeleton_exit(void)
 	kthread_stop(blink_thread);
 	wake_up_interruptible(&freq_wq);
 	// Remove the sysfs files
-	// unlink(SET_FREQ_PATH);
-	// unlink(GET_FREQ_PATH);
-	// unlink(AUTO_FREQ_PATH);
+	unlink(SET_FREQ_PATH);
+	unlink(GET_FREQ_PATH);
+	unlink(AUTO_FREQ_PATH);
 	// Free the GPIO for the status LED
 	gpio_free(STATUS_LED_GPIO);
 
@@ -249,7 +249,7 @@ static void __exit skeleton_exit(void)
 module_init (skeleton_init);
 module_exit (skeleton_exit);
 
-MODULE_AUTHOR ("CSEL1 - Group 1");
+MODULE_AUTHOR ("CSEL1 - Group: Carolina, Gaby, Simon");
 MODULE_DESCRIPTION ("Module skeleton");
 MODULE_LICENSE ("GPL");
 
