@@ -202,7 +202,7 @@ int get_temperature(int fd)
 
 int main(void)
 {
-    // daemonize();
+    daemonize();
 
     int auto_freq_fd = open(AUTO_FREQ_PATH, O_RDWR);
     if (auto_freq_fd == -1) {
