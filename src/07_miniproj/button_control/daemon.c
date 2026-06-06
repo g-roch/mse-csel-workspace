@@ -38,8 +38,7 @@ int frequency = 10; // Initial frequency (Hz)
 int temperature = 35; // Initial temperature (°C)
 int current_mode = 1; // 1 for auto, 0 for manual
 
-// Update the frequency
-static void update_frequency(int get_freq_fd, int set_freq_fd, int delta)
+static int read_frequency(int get_freq_fd)
 {
     // Read the current frequency from the get_freq interface
     char freq_str[16];
@@ -48,6 +47,13 @@ static void update_frequency(int get_freq_fd, int set_freq_fd, int delta)
 
     // Convert the frequency string to an integer, apply the delta, and convert back to string
     int freq = atoi(freq_str);
+    return freq;
+}
+
+// Update the frequency
+static void update_frequency(int get_freq_fd, int set_freq_fd, int delta)
+{
+    int freq = read_frequency(get_freq_fd); // Read the current frequency from the get_freq interface
     freq += delta;
 
     // Keep frequency between MIN_FREQ and MAX_FREQ
@@ -57,6 +63,7 @@ static void update_frequency(int get_freq_fd, int set_freq_fd, int delta)
         freq = MAX_FREQ;
     }
     // Write the new frequency back to the set_freq interface
+    char freq_str[16];
     sprintf(freq_str, "%d\n", freq);
     lseek(set_freq_fd, 0, SEEK_SET);
     write(set_freq_fd, freq_str, strlen(freq_str));
@@ -179,6 +186,7 @@ void update_display()
 
 int get_temperature(int fd)
 {
+    lseek(fd, 0, SEEK_SET);
     // Read the temperature from the system file
     char temp_str[16];
     read(fd, temp_str, sizeof(temp_str));
@@ -283,9 +291,9 @@ int main(void)
     // Main loop to poll button states and control the LED
     char k1_value = '0', k2_value = '0', k3_value = '0';
     while (1) {
-        // Wait for any button event using epoll
+        // Wait for any button event using epoll with timout of 0.5 seconds
         struct epoll_event events[4];
-        int nr = epoll_wait(epfd, events, 4, -1);
+        int nr = epoll_wait(epfd, events, 4, 500);
         if (nr == -1) {
             perror("epoll_wait");
             break;
@@ -293,20 +301,22 @@ int main(void)
 
         for (int i = 0; i < nr; i++) {
             // Read fd to clear the event
-            if (events[i].data.fd == k1_fd) {
+            if (events[i].data.fd == k1_fd && current_mode == 0) {
                 lseek(k1_fd, 0, SEEK_SET);
                 read(k1_fd, &k1_value, sizeof(k1_value));
                 // If k1 is pressed, increase the frequency
                 if (k1_value == '1') {
                     update_frequency(get_freq_fd, set_freq_fd, -FREQ_STEP);
+                    temperature = get_temperature(temp_fd);
                     update_display();
                 }
-            } else if (events[i].data.fd == k2_fd) {
+            } else if (events[i].data.fd == k2_fd && current_mode == 0) {
                 lseek(k2_fd, 0, SEEK_SET);
                 read(k2_fd, &k2_value, sizeof(k2_value));
                 // If k2 is pressed, decrease the frequency
                 if (k2_value == '1') {
                     update_frequency(get_freq_fd, set_freq_fd, FREQ_STEP);
+                    temperature = get_temperature(temp_fd);
                     update_display();
                 }
             } else if (events[i].data.fd == k3_fd) {
@@ -315,15 +325,23 @@ int main(void)
                 // If k3 is pressed, switch mode
                 if (k3_value == '1') {
                     switch_mode(auto_freq_fd);
+                    frequency = read_frequency(get_freq_fd); // Update frequency variable to reflect any change from switching mode
+                    temperature = get_temperature(temp_fd);
                     update_display();
                 }
             } else if (events[i].data.fd == temp_fd) {
-                lseek(temp_fd, 0, SEEK_SET);
-
                 clock_t current_time = clock();
-                if (current_time - last_temp_update > CLOCKS_PER_SEC) { // Update temperature at most once per second
+                if (current_time - last_temp_update > CLOCKS_PER_SEC / 2) { // Update temperature at most once per second
                     last_temp_update = current_time;
-
+                    frequency = read_frequency(get_freq_fd); // Update frequency variable to reflect any change from switching mode
+                    temperature = get_temperature(temp_fd);
+                    update_display();
+                }
+            } else {
+                clock_t current_time = clock();
+                if (current_time - last_temp_update > CLOCKS_PER_SEC / 2) { // Update temperature at most once per second
+                    last_temp_update = current_time;
+                    frequency = read_frequency(get_freq_fd); // Update frequency variable to reflect any change from switching mode
                     temperature = get_temperature(temp_fd);
                     update_display();
                 }

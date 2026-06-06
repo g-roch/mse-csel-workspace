@@ -12,7 +12,7 @@
 
 #define STATUS_LED_GPIO	10
 
-#define CONTROL_PERIOD_MS	1000 // How often the control loop samples mode/temperature
+#define CONTROL_PERIOD_MS	100 // How often the control loop samples mode/temperature
 
 static DECLARE_WAIT_QUEUE_HEAD(freq_wq);  // Wakes the blink thread when the frequency changes
 static DECLARE_WAIT_QUEUE_HEAD(ctrl_wq);  // Wakes the control thread on module unload
@@ -157,7 +157,7 @@ static int control_loop(void *data) {
 			wake_up_interruptible(&freq_wq);
 		}
 
-		// Sample roughly once per second, but wake up immediately on unload
+		// Sample roughly once every CONTROL_PERIOD_MS, but wake up immediately on unload
 		wait_event_interruptible_timeout(ctrl_wq, kthread_should_stop(),
 						 msecs_to_jiffies(CONTROL_PERIOD_MS));
 	}
