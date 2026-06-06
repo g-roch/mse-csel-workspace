@@ -316,7 +316,7 @@ int main(void)
                 read(k1_fd, &k1_value, sizeof(k1_value));
                 // If k1 is pressed, increase the frequency
                 if (k1_value == '1') {
-                    update_frequency(get_freq_fd, set_freq_fd, FREQ_STEP);
+                    update_frequency(get_freq_fd, set_freq_fd, -FREQ_STEP);
                     update_display();
                 }
             } else if (events[i].data.fd == k2_fd) {
@@ -324,7 +324,7 @@ int main(void)
                 read(k2_fd, &k2_value, sizeof(k2_value));
                 // If k2 is pressed, decrease the frequency
                 if (k2_value == '1') {
-                    update_frequency(get_freq_fd, set_freq_fd, -FREQ_STEP);
+                    update_frequency(get_freq_fd, set_freq_fd, FREQ_STEP);
                     update_display();
                 }
             } else if (events[i].data.fd == k3_fd) {
