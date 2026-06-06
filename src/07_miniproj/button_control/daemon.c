@@ -139,8 +139,8 @@ void daemonize()
     if (pid < 0) exit(EXIT_FAILURE); // Fork failed
     if (pid > 0) exit(EXIT_SUCCESS); // Parent exits, child continues as daemon
 
-    umask(0); // TODO: Set file permissions mask
-    chdir("/"); // TODO: Change working directory to ... 
+    umask(0);
+    chdir("/");
 
     // Close standard file descriptors (stdin, stdout, stderr)
     close(STDIN_FILENO);
@@ -195,24 +195,6 @@ int get_temperature(int fd)
 int main(void)
 {
     daemonize();
-
-    // --------------------------------------------------------------------------------------------
-    // Create the files for the get_freq, set_freq and auto_freq interfaces if they don't exist
-    // TODO: remove this in the final version, we will have the sysmod to create these files for us
-    int fd;
-    fd = open(SET_FREQ_PATH, O_RDWR | O_CREAT, 0666);
-    if (fd == -1) {
-        perror("open set_freq");
-        return 1;
-    }
-    close(fd);
-    fd = open(AUTO_FREQ_PATH, O_RDWR | O_CREAT, 0666);
-    if (fd == -1) {
-        perror("open auto_freq");
-        return 1;
-    }
-    close(fd);
-    // --------------------------------------------------------------------------------------------
 
     current_mode = !current_mode;
     int auto_freq_fd = open(AUTO_FREQ_PATH, O_RDWR);
